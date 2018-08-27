@@ -1,0 +1,221 @@
+library(dplyr) ; library(tidyr)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(lsmeans)
+library(lme4)
+library(plyr)
+library(Rmisc)
+library(cowplot)
+
+#load data
+performance <- read.csv("E:/2018/Jan/18/performance.csv")
+
+#filter for those with counts above 10
+#but first, create the colony-count-per-year field
+
+
+performance <-ddply(performance,.(colony,year),transform,colonyCountPerYear = count(colony))
+
+#now filtering is possible via the newly created field (get only those 10 and above)
+performance2 <- subset(performance, colonyCountPerYear.freq > 9)
+#finally it works
+
+####to include RSA data####
+#to perform analysis, I only need data after 2009
+#since this is for BS calculations, I can only use those with confirmed effort.
+performanceAll <- subset(performance2, active ==1 & year > 2009) #na.rm=TRUE???
+
+#remember to remove 2013BW data because it's garbage, also 2016KHW which had no late season [cant i do this programmatically]
+#khwai2016 <- which(performanceAll$year == 2016 & performanceAll$colony == "KHW")
+#performanceAll  <- performanceAll [-khwai2016,]
+
+BW2013 <-  which(performanceAll$year == 2013 & performanceAll$country == "BW")
+performanceAll  <- performanceAll [-BW2013,]
+
+#BW2016 <-  which(performanceAll$year == 2016 & performanceAll$country == "BW")
+#performanceAll  <- performanceAll [-BW2016,]
+
+RSA <-  which(performanceAll$colony %in% c("HIP","MKH","PGR","PNR","THL"))
+performanceAll  <- performanceAll [-RSA,]
+
+
+# performanceBW <- subset(performance2, effort ==1 & country=="BW" & year!=2013) #na.rm=TRUE???
+
+#again, convert year to factor
+performanceAll$yearfact<- as.factor(performanceAll$year)
+
+#all the surveys to truncate
+
+#analysis of All data; only GLM for this, NOT GLMER
+summary(performanceAll)
+
+m2<-glm(success~province+yearfact+yearfact*province, data=performanceAll, family="binomial", weight=weeks)
+summary(m2)
+#28122017 nPerCount <-ddply(performanceAll,.(province,year),transform,nPerYear = count(province))
+#library(Rmisc)
+"E:/2018/Jan/18/performance.csv"
+DataAll2 = summarySE(data=performance2,"success",na.rm = TRUE,groupvars=c("province","year"),conf.interval = 0.95,.drop = TRUE)
+write.csv(DataAll2, "E:/2018/Jan/18/YearlynPerProvince.csv")
+DataAll3 = summarySE(data=performance2,"effort",na.rm = TRUE,groupvars=c("province","year"),conf.interval = 0.95,.drop = TRUE)
+write.csv(DataAll3, "E:/2018/Jan/18/Yearly_N_PerProvince.csv")
+
+DataAll4 = summarySE(data=performance2,"success",na.rm = TRUE,groupvars=c("province","year"),conf.interval = 0.95,.drop = TRUE)
+write.csv(DataAll4, "E:/2018/Jan/18/YearlynPerProvince.csv")
+
+DataAll5 = summarySE(data=performance2,"success",na.rm = TRUE, groupvars=c("province","year"), conf.interval = 0.95)
+
+write.csv(performance2, "E:/2018/Jan/18/performanceForTable.csv")
+#m2
+#summary(m2)
+performance$yearfact<- as.factor(performance$year)
+m2<-glm(success~province+yearfact+yearfact*province, data=performance, family="binomial", weight=weeks)
+summary(m2)
+lsmeans(m2, pairwise ~ province, type = "response", na.rm=TRUE)
+##########################options(max.print = 999999999)
+lsmeans(m2, pairwise ~ province, type = "response", na.rm=TRUE)
+#too many, only
+#emmeans
+
+
+#>>>>
+DataAll = summarySE(data=performance2,"success",na.rm = TRUE,groupvars="province",conf.interval = 0.95)
+
+Table = as.table(DataAll$success)
+rownames(Table) = DataAll$province
+
+barplot(Table,  ylab="breeding success",  xlab="year")
+
+####plot using ggplot#####
+offset.v = -2     # offsets for mean letters
+offset.h = 0.5
+
+
+
+compare_means(success ~ province,  data = DataAll)
+my_comparisons <- list( c("BW_now", "BW_then"),  c("BW_now", "KZN"), c("BW_now", "NC") ,  c("BW_now", "NW"))
+windows()
+
+newdata <- DataAll[order(DataAll$success),]
+
+           ggplot(newdata, aes(x = reorder(province, success), y = success ,ymax=0.8, ymin=0.0, fill="LNY"))+
+             geom_bar(stat="identity", fill=c("gray50","gray90","gray90","gray50","gray50"), colour = "black", width = 0.7)  +
+             scale_fill_manual(values=c("gray")) +
+             guides(fill=guide_legend(title=NULL))+
+             coord_cartesian(ylim=c(0.056,0.8))+
+             geom_errorbar(aes(ymax=success+se, ymin=success-se),width=0.1, size=0.5, color="black")  +
+             geom_text(aes(label=N,hjust=offset.h, vjust=offset.v),position=position_stack(vjust = 0),size=6) +
+             labs(x = "province", y = "breeding success")  +
+             ## ggtitle("Main title") +
+             theme_classic()  +
+             theme(legend.position=c(.85, .85),
+                   legend.text=element_text(size=17),
+                   axis.text=element_text(size=17),
+                   axis.title = element_text(face = "bold"),
+                   axis.title.y = element_text(size=19,vjust= 1.8),
+                   axis.title.x = element_text(size=19,vjust= -0.5)
+             )
+           +
+  stat_compare_means(comparisons = my_comparisons)
+
+
+?glm()
+
+library(lmerTest)
+performance2$yearfact<- as.factor(performance2$year)
+m2<-glm(success~province+yearfact+yearfact*province, data=performance2, family="binomial", weight=weeks)
+summary(m2)
+mAll <- lmer(success ~ province+(1|colony)+(1|yearfact)+(1|nest),weight=weeks,data=performance2)
+mAll
+
+m1 <- glm(success ~ province+yearfact,family = binomial, data = performance2)
+summary(m1)
+
+m2<- glmer(success ~ province + (1|colony)+(1|yearfact)+(1|nest),weight=weeks, data = performanceAll, family = binomial)
+m2
+
+lsmeansLT(mAll, test.effs="success:province", na.rm=TRUE)
+
+lsmeansLT(mAll)
+header(lsmeansLT(mAll))
+head(lsmeansLT(mAll))
+str(lsmeansLT(mAll))
+
+#reorder??, label N??
+offset.v = -0.5     # offsets for mean letters
+offset.h = 0.5
+par()
+plot(lsmeansLT(mAll)) +
+  labs(x = "province", y = "breeding success estimate")+
+  #ggtitle("1")+
+  #scale_fill_grey()+
+  #scale_fill_manual(name="significance",values=c("gray50","gray90","gray90","gray50","gray50"))+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_text(aes(label=Estimate,hjust=offset.h, vjust=offset.v),position=position_stack(vjust = 0),size=4) +
+  #theme(plot.title = element_text(1)) +
+  scale_x_discrete(limit = c("BW 2006/07", "BW 2017", "KZN", "NC", "NW"))+
+  theme_minimal()+
+ # facet_wrap(~ Estimate) +
+  #theme(
+   # strip.background = element_blank(),
+   # strip.text.x = element_blank()
+  #)
+ # theme(plot.title = element_blank())+
+  theme(plot.title = element_text(size = 16, color="#000000"),
+        legend.position=c(.895, .89),
+        axis.text.x = element_text(size = 15, color="#000000"),
+        legend.text=element_text(size=15),
+        axis.text.y = element_text(size = 16),
+        axis.title = element_text(color="#000000", face="bold", size=22),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.51, linetype = "solid")
+        )
+
+#############
+
+performance3<-performance2
+mAll2 <- lmer(active ~ province+(1|colony)+(1|yearfact)+(1|nest),weight=weeks,data=performance2)
+lsmeansLT(mAll2, test.effs="active:province", na.rm=TRUE)
+
+lsmeansLT(mAll2)
+header(lsmeansLT(mAll2))
+head(lsmeansLT(mAll2))
+str(lsmeansLT(mAll2))
+
+#reorder??, label N??
+offset.v = -0.5     # offsets for mean letters
+offset.h = 0.5
+par()
+plot(lsmeansLT(mAll2)) +
+  labs(x = "province", y = "breeding success estimate")+
+  #ggtitle("1")+
+  #scale_fill_grey()+
+  #scale_fill_manual(name="significance",values=c("gray","gray","gray","gray","gray"))+
+  coord_cartesian(ylim=c(0, 1))+
+  scale_y_continuous(expand = c(0,0))+
+  #geom_text(aes(label=Estimate,hjust=offset.h, vjust=offset.v),position=position_stack(vjust = 0),size=4) +
+  #theme(plot.title = element_text(1)) +
+  scale_x_discrete(limit = c("BW 2006/07", "BW 2017", "KZN", "NC", "NW"))+
+  theme_minimal()+
+  # facet_wrap(~ Estimate) +
+  #theme(
+  # strip.background = element_blank(),
+  # strip.text.x = element_blank()
+  #)
+  # theme(plot.title = element_blank())+
+  theme(plot.title = element_text(size = 16, color="#000000"),
+        legend.position=c(.895, .89),
+        axis.text.x = element_text(size = 15, color="#000000"),
+        legend.text=element_text(size=15),
+        axis.text.y = element_text(size = 16),
+        axis.title = element_text(color="#000000", face="bold", size=22),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.51, linetype = "solid"))
+
+
+
