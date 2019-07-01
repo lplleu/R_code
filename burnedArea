@@ -1,0 +1,16 @@
+#url <- "https://www.uni-trier.de/fileadmin/fb6/prof/FER/Downloads/Software/MODISFire/MODISFire_1.0.0.tar.gz"
+#download.file(url, "MODISFire_1.0.0.tar.gz", method = "curl")
+#dir.create("img")
+#install.packages("rgdal",dependencies=TRUE)
+#library(rgdal)
+#install.packages("MODISFire_1.0.0.tar.gz", repos = NULL, type = "source",dependencies=TRUE)
+library(MODISFire)
+
+#install.packages("MODIS", dependencies=TRUE)
+#library(MODIS)
+
+#MODISoptions(localArcPath = "img", quiet = FALSE)
+
+mydir1 <- 'img'
+mydir2 <- 'output'
+mfBURNEDAREA(mydir1, mydir2, download=FALSE)
