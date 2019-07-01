@@ -13,4 +13,10 @@ library(MODISFire)
 
 mydir1 <- 'img'
 mydir2 <- 'output'
-mfBURNEDAREA(mydir1, mydir2, download=FALSE)
+mfBURNEDAREA(mydir1, mydir2, 
+             collection=5, 
+             download=FALSE, 
+             vlim=c(11,11), 
+             hlim=c(20,20), 
+             ylim=c(2003,2004)
+             )
