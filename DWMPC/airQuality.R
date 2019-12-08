@@ -1,3 +1,7 @@
+#import and interrogate air quality data
+#jedenfalls
+#08-12-2019
+
 ####install libraries####
 #you only have to do this once
 install.packages("stringr",dependencies=TRUE)
