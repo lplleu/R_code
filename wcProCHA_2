@@ -1,0 +1,357 @@
+# Wattled Crane estimation vs CHA
+# 29-02-2020
+# jedenfalls
+
+#install.packages("rgdal",dependencies=TRUE)
+
+####loadLibraries####
+
+setwd("/tmp/RtmpySSgzQ/downloaded_packages")
+setwd("/cloud/project")
+getwd()
+install.packages("/cloud/project/rgdal_1.4-7.tar.gz",dependencies=TRUE)
+install.packages('rgdal', type = "source", dependencies=TRUE)
+
+require(rgdal)
+#file.copy(from = "path/to/your_file.xlsx", paste0("destination/path/", Sys.Date(), ".xlsx"))
+
+library(ggplot2)
+#install.packages("ggmap",dependencies=TRUE)
+library(ggmap)
+library(plotly)
+#https://webcache.googleusercontent.com/search?q=cache:Ujhlh32GBzYJ:https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf+&cd=1&hl=en&ct=clnk&gl=bw
+#shape <- readOGR(dsn="/cloud/project/",layer="BOT")
+#border <- readOGR(dsn="/cloud/project/",layer="border")
+library(tidyverse)
+getwd()
+
+####border###
+border <- readOGR(dsn="/cloud/project/",layer="BOT_outline")
+border_fortified <- fortify(border)
+
+map <- ggplot() +
+  #£theme_bw() +
+  geom_path(data = border_fortified, 
+            aes(x = long, y = lat, group = group),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+  #geom_point()
+
+
+####addProjection####
+map_projected <- map +
+  coord_map()
+
+print(map_projected)
+
+
+####constituencies####
+constituencies <- readOGR(dsn="/cloud/project/",layer="Constituency_BND_2014")
+constituencies <- spTransform(constituencies, CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+constituencies_fortified <- data.frame(constituencies)
+
+constituencies_fortified <- fortify(constituencies)
+
+#utils::View(constituencies_fortified)
+
+#install.packages("editData", dependencies=TRUE)
+
+
+
+mapC <- ggplot() +
+  theme_bw() +
+  geom_path(data = constituencies_fortified, 
+            aes(x = long, y = lat, group = group),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+
+mapCd <- mapC +
+  coord_map()
+
+print(mapCd)
+
+map_constituencies <-map_projected +
+  geom_path(data = constituencies_fortified2, 
+            aes(x = long, y = lat))
+
+print(map_constituencies)
+
+###>>> transform
+summary(map_projected)
+summary(constituencies)
+#old>>> +proj=tmerc +lat_0=0 +lon_0=24 +k=0.9992 +x_0=1000000 +y_0=5000000 +ellps=GRS80 +units=m +no_defs
+
+
+
+#install.packages("GISTools",dependencies=TRUE)
+library(GISTools)
+
+#writeOGR(obj=torn, dsn="tempdir", layer="constituencies_fortified2", driver="ESRI Shapefile") # this is in geographical projection
+
+
+
+
+####settlements####
+settlements <- readOGR(dsn="/cloud/project/",layer="botswana_settlements")
+#settlements_fortified <- fortify(settlements)
+settlements_fortified <- data.frame(settlements)
+
+
+settlements_map <- map_projected +
+  geom_point(data = settlements_fortified, 
+             aes(x = coords.x1, y = coords.x2, group = SETTLEMENT),  color="red")
+print(settlements_map)
+
+####ngamiland###
+borderNG <- readOGR(dsn="/cloud/project/",layer="ngamiland district")
+borderNG_fortified <- fortify(borderNG)
+
+mapNG<- ggplot() +
+  theme_bw() +
+  geom_path(data = borderNG_fortified, 
+            aes(x = long, y = lat),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+#geom_point()
+
+####addProjection####
+mapNG_projected <- mapNG +
+  coord_map()
+
+print(mapNG_projected)
+
+####CHA####
+CHAs <- readOGR(dsn="/cloud/project/",layer="CHAs")
+CHAs_fortified <- data.frame(CHAs)
+
+map_CHAs <- map_projected +
+  geom_path(data = CHAs_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_CHAs)
+
+mapCHA <- ggplot() +
+  theme_bw() +
+  geom_path(data = CHAs_fortified, 
+            aes(x = POINT_X, y = POINT_Y, group = optional),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+
+mapCHA <- mapCHA +
+  coord_map()
+
+print(mapCHA)
+
+####wattledCrane####
+WC <- readOGR(dsn="/cloud/project/",layer="wattled_crane_2001")
+#settlements_fortified <- fortify(settlements)
+WC_fortified <- data.frame(WC)
+
+
+#WC_map <- map_projected +
+WC_map <-  mapNG_projected + geom_point(data = WC_fortified, 
+                                        aes(x = coords.x1, y = coords.x2),  color="red")
+print(WC_map)
+
+####add contours to 'WC_map' layer####
+WC_map2 <- WC_map + 
+  geom_density_2d(aes(colour = ..level..),
+                  bins=3,size=.4
+  )+
+  scale_color_gradient(low='gray', high='black')
+
+print(WC_map2)
+
+
+
+####wattledCrane2####
+WC <- readOGR(dsn="/cloud/project/",layer="wattled_crane_distribution_area")
+#settlements_fortified <- fortify(settlements)
+WC_fortified <- data.frame(WC)
+
+
+#WC_map <- map_projected +
+WC_map <-  mapNG_projected + geom_point(data = WC_fortified, 
+                                        aes(x = coords.x1, y = coords.x2),  color="red")
+print(WC_map)
+
+#or palegreen and red
+
+print(mapSettlementsWithContour)
+
+####clip####
+#library(rgeos)
+
+NgamiCHAs <- gIntersection(mapCHA, mapNG)
+#NgamiCHAs <- gIntersection(mapNG, mapCHA)
+
+####cha####
+cha <- readOGR(dsn="/cloud/project/",layer="cha")
+cha_fortified <- fortify(cha)
+
+map_cha <- settlements_map +
+  geom_path(data = cha_fortified, 
+            aes(x = long, y = lat))
+
+print(map_cha)
+
+mapCHA <- ggplot() +
+  theme_bw() +
+  geom_path(data = cha_fortified, 
+            aes(x = long, y = lat, group = group),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+
+mapCHA <- mapCHA +
+  coord_map()
+
+print(mapCHA)
+####pentad####
+pentad <- readOGR(dsn="/cloud/project/",layer="ploypent")
+pentad_fortified <- fortify(pentad)
+
+map_pentad <- map_projected +
+  geom_path(data = pentad_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_pentad)
+
+####CHA####
+CHAs <- readOGR(dsn="/cloud/project/",layer="CHAs")
+CHAs_fortified <- data.frame(CHAs)
+
+map_CHAs <- map_projected +
+  geom_path(data = CHAs_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_CHAs)
+
+mapCHA <- ggplot() +
+  theme_bw() +
+  geom_path(data = CHAs_fortified, 
+            aes(x = POINT_X, y = POINT_Y, group = optional),
+            color = '#000000', size = .2)+
+  xlab("longitude, E")+
+  ylab("latitude, N")
+
+mapCHA <- mapCHA +
+  coord_map()
+
+print(mapCHA)
+####PA####
+hunting_all_preban <- readOGR(dsn="/cloud/project/",layer="hunting_all_preban")
+hunting_all_preban_fortified <- fortify(hunting_all_preban)
+
+natural <- readOGR(dsn="/cloud/project/",layer="natural")
+natural_fortified <- fortify(natural)
+
+map_natural <- map_projected +
+  geom_path(data = natural_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_natural)
+
+####landUse####
+landuse <- readOGR(dsn="/cloud/project/",layer="landuse")
+landuse_fortified <- fortify(landuse)
+
+map_landuse <- map_projected +
+  geom_path(data = landuse_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_landuse)
+
+####PA####
+PA <- readOGR(dsn="/cloud/project/",layer="PA")
+PA_fortified <- fortify(PA)
+
+
+#### edit text here
+
+map_PA <- settlements_map +
+  geom_path(data = PA_fortified, 
+            aes(x = long, y = lat)) #+ 
+  #geom_point(aes(colour = factor(cyl)))
+  #ggplot(mtcars2, aes(wt, mpg)) + geom_point()
+
+p <- ggplotly(map_PA) #, tooltip="text"
+p
+
+print(map_PA)
+
+places <- readOGR(dsn="/cloud/project/",layer="places")
+places_fortified <- fortify(places)
+
+####WMA####
+WMAs <- readOGR(dsn="/cloud/project/",layer="WMAs")
+WMAs_fortified <- data.frame(WMAs)
+
+map_WMAs <- map_projected +
+  geom_path(data = landuse_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_WMAs)
+
+####PA####
+parksReserves <- readOGR(dsn="/cloud/project/",layer="parksReserves")
+PAs_fortified <- data.frame(parksReserves)
+
+map_PAs <- map_projected +
+  geom_path(data = landuse_fortified, 
+            aes(x = long, y = lat, group = group))
+
+print(map_PAs)
+
+
+density <- readOGR(dsn="/cloud/project/",layer="density")
+density_fortified <- fortify(density)
+
+names <- readOGR(dsn="/cloud/project/",layer="names")
+names_fortified <- fortify(names)
+
+placesNG <- readOGR(dsn="/cloud/project/",layer="placesNG")
+placesNG_fortified <- fortify(placesNG)
+
+roadsNG <- readOGR(dsn="/cloud/project/",layer="roadsNG")
+roadsNG_fortified <- fortify(roadsNG)
+
+####soils####
+soils <- readOGR(dsn="/cloud/project/",layer="soils")
+soils_fortified <- fortify(soils)
+soils_fortified <- data.frame(soils)
+
+soils_map <- map_projected +
+  geom_point(data = soils_fortified, 
+             aes(x = coords.x1, y = coords.x2, size=completene, group = completene), color="red", shape=21, alpha=0.8)
+print(healthsites_map)
+
+
+
+soilsNG <- readOGR(dsn="/cloud/project/",layer="soilsNG")
+soilsNG_fortified <- fortify(soilsNG).
+
+####healthSites####
+healthsites <- readOGR(dsn="/cloud/project/",layer="healthsites")
+healthsites_fortified <- fortify(healthsites)
+healthsites_fortified <- data.frame(healthsites)
+
+#https://peterslarson.com/
+#https://data.humdata.org/dataset/botswana-healthsites
+healthsites_map <- map_projected +
+  geom_point(data = healthsites_fortified, 
+            aes(x = coords.x1, y = coords.x2, size=completene, group = completene), color="red", shape=21, alpha=0.8)
+print(healthsites_map)
+
+#install.packages("mapview",dependencies=TRUE)
+library(mapview)
+#mapview(map_projected)
+
+
+
+
