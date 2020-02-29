@@ -1,0 +1,77 @@
+#you should make a habit of commenting on your code so that someone else can follow what you were doing
+#typically, include:
+# jedenfalls
+# 29 February 2020
+# preparing for PHVA for 
+
+#renaming the column headers on WC_123
+#colnames(WC_123) <- c("name","longitude","latitude","year")
+colnames(WC_123)[1] <- "name"
+colnames(WC_123)[2] <- "longitude"
+colnames(WC_123)[3] <- "latitude"
+
+#create a new dataset named "finalWC", which removes column number 4 from WC_123
+finalWC <- WC_123[,-4]
+
+#by the way, there is nothing wrong with having the 'year' column, other columns you can have are; 'institutionCode','catalogNumber','basisOfRecord','country','stateProvince','locality', and 'elevation' 
+
+#export to csv which can be used for wallace.
+write.csv(finalWC, "finalWC.csv")
+
+####map in plot to verify distribution of observations####
+
+#enable reading of shapefiles using rgdal (install first, if not installed)
+#install.packages('rgdal', type = "source", dependencies=TRUE)
+require(rgdal)
+
+#enables charting application, using ggplot2 (install first, if not installed)
+#install.packages("ggplot2", dependencies = TRUE)
+library(ggplot2) 
+
+####load background map shapefile (because in this case you are interested in density per CHA, use the CHA shapefile) ####
+
+cha <- readOGR(dsn="/cloud/project/",layer="chaBW")
+
+writeOGR(cha, dsn = '.', layer = 'poly', driver = "ESRI Shapefile")
+writeOGR(cha, layer = 'poly', "cities", driver="ESRI Shapefile")
+
+cha2 <- readOGR(dsn="/cloud/project/cities",layer="poly")
+
+cha_fortified <- fortify(cha2)
+
+Nhabe <- ggplot(cha2) +
+  theme_bw() +
+  geom_polygon(data = cha2@polygons, 
+               aes(x = long, y = lat, group=group), 
+               colour='black', 
+               fill = 'white') +
+  geom_text(aes(label = stat(cha2@data$UID))) +
+  xlab("Longitude, E")+
+  ylab("Latitude, S")
+
+Nhabe+coord_map()
+
+####fix Projection (if you look at the map, it is currently distorted)####
+Nhabe_projected <- Nhabe +
+  coord_map()
+
+print(Nhabe_projected)
+
+#combine the CHA map (here called Nhabe_projected) with the  points to create a new object called 'map_data'
+Nhabe_projected$data$lat <- as.factor(ToothGrowth$dose)
+
+map_data <- 
+  Nhabe_projected +
+  geom_point(data=finalWC, 
+             aes(x=longitude, y=latitude), colour="red", 
+             fill="red",pch=21, size=0.5, alpha=I(0.9))+
+  coord_map(xlim = c(22.2, 23.85),ylim = c(-20.0, -18.75))  #this just crops the map to the given coordinates
+
+#display map (still struggling to label center og each CHA)
+print(map_data)
+
+####now, onto the real modelling####
+#install.packages("wallace" dependencies=TRUE)
+library(wallace)
+run_wallace()
+
