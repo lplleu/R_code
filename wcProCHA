@@ -1,0 +1,104 @@
+# kernel density estimate with contour
+# 29-02-2020
+# jedenfalls
+
+#install.packages('rgdal', type = "source", dependencies=TRUE)
+#install.packages("ggplot2", dependencies = TRUE)
+
+require(rgdal)  #enables reading of shapefiles
+library(ggplot2) #enables charting application
+
+####import 'settlements' layer####
+
+settlements <- readOGR(dsn="/cloud/project/",layer="botswana_settlements")
+settlements_fortified <- data.frame(settlements)
+
+####plot the 'settlements' layer#####
+mapSettlements <- ggplot(settlements_fortified, 
+                         aes(x = coords.x1, y = coords.x2)) +
+                         theme_bw() +
+                         #color = '#000000'+
+                         geom_point(color = '#000000', size = .1) +
+                         xlab("longitude, E")+
+                         ylab("latitude, N")+ 
+                         scale_y_continuous(labels = settlements_fortified$coords.x2)
+
+print(mapSettlements)
+
+####import 'settlements' layer####
+
+settlements <- readOGR(dsn="/cloud/project/",layer="wattled_crane_2001")
+settlements_fortified <- data.frame(settlements)
+
+####plot the 'settlements' layer#####
+mapSettlements <- ggplot(settlements_fortified, 
+                         aes(x = coords.x1, y = coords.x2))+ 
+  geom_point(color = 'purple', size = .2)+ 
+  theme_bw() +
+  #color = '#000000'+
+  xlab("longitude, E")+
+  ylab("latitude, N") +
+  scale_y_continuous(labels = settlements_fortified$coords.x2)
+
+print(mapSettlements)
+
+####add projection to 'settlements' layer####
+mapSettlements <- mapSettlements + coord_map()
+
+####add contours to 'settlements' layer####
+mapSettlementsWithContour <- mapSettlements + 
+  geom_density_2d(aes(colour = ..level..),
+                  bins=7,size=.4
+                  )+
+  scale_color_gradient(low='green', high='red')
+
+  #or palegreen and red
+
+print(mapSettlementsWithContour)
+
+####load border shapefile####
+border <- readOGR(dsn="/cloud/project/",layer="Ngamiland_CHAs")
+border_fortified <- fortify(border)
+
+
+####border###
+border <- readOGR(dsn="/cloud/project/",layer="cha")
+border_fortified <- fortify(border)
+
+Nhabe <- ggplot(border_fortified) +
+  #theme_bw() +
+  geom_sf(aes(fill = group))+
+  geom_sf_text(aes(label = piece), colour = "black")
+  #geom_polygon(data = border_fortified, aes(group=group), colour='black', fill=NA) +
+  #geom_path(data = border_fortified,aes(x = long, y = lat, group = group),color = '#000000', size = .2)+
+  #geom_text(data=border_fortified, aes(x = long, y = lat, label = piece), size=3) + #add labels at centroids
+  #xlab("longitude, E")+
+  #ylab("latitude, N")
+#geom_point()
+
+
+####addProjection####
+Nhabe_projected <- Nhabe +
+  coord_map()
+
+print(Nhabe_projected)
+
+
+####add projections to 'border' layer####
+
+
+####final map with border####
+bwSettlementsWithContour <- mapSettlementsWithContour+
+  geom_path(data = border_fortified, 
+            aes(x = long, y = lat, group = group),
+            color = '#000000', size = .2)
+
+print(bwSettlementsWithContour)
+
+#...id rather have the contours vary in colour or size [use c() for custom values??]
+
+####add heatmap####
+bwSettlementsWithContour + 
+  stat_density_2d(aes(fill = stat(level)), geom = "polygon", colour="black") +
+  scale_fill_distiller() #settlements go up to 18
+
