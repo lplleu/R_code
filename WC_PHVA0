@@ -1,6 +1,6 @@
 # wallace output, reformatted
 # 06 March 2020
-# preparing for PHVA
+# preparing for PHVA for Okavango Wattled Crane
 
 ####load the required libraries####
 #comment out as necessary (i assume that each library is already installed -so i omit the install function)
@@ -145,10 +145,11 @@ mod <- evalMods[["LQ_1"]]
 pred <- evalPreds[["LQ_1"]]
 
 # get predicted values for occurrence grid cells
-occPredVals <- raster::extract(pred, occs.xy)
+occPredVals <- raster::extract(pred, occsXY)
 
 # define minimum training presence threshold
 thr <- thresh(occPredVals, "mtp")
+
 # threshold model prediction
 pred <- pred > thr
 
@@ -168,7 +169,7 @@ predsProj <- raster::mask(predsProj, projPoly)
 proj <- ENMeval::maxnet.predictRaster(mod, predsProj, type = 'exponential', clamp = TRUE)
 
 # get predicted values for occurrence grid cells
-occPredVals <- raster::extract(pred, occs.xy)
+occPredVals <- raster::extract(pred, occsXY)
 
 # define minimum training presence threshold
 thr <- thresh(occPredVals, "mtp")
@@ -189,12 +190,14 @@ plot(proj)
 #the environmental range of the occurrence localities.
 
 # extract environmental values from occurrence localities and background -- these were the values that went into the model
-names(bg.xy) <- names(occs.xy)
-all.xy <- rbind(occs.xy, bg.xy)
+names(bgXY) <- names(occsXY)
+all.xy <- rbind(occsXY, bgXY)
 occEnvVals <- raster::extract(envs, all.xy)
 
 # compare these values with the projection extent (envsMsk)
 proj.mess <- dismo::mess(predsProj, occEnvVals)
 plot(proj.mess)
+ 
+# maybe overlay with other landmarks/polygons to visualise it better.
 
-once the hang of it is gotten can add LC, SWD, and water quality among others
+# once the hang of it is gotten, can add LC, SWD, and water quality among others
