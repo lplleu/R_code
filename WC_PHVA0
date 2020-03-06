@@ -197,3 +197,4 @@ occEnvVals <- raster::extract(envs, all.xy)
 proj.mess <- dismo::mess(predsProj, occEnvVals)
 plot(proj.mess)
 
+once the hang of it is gotten can add LC, SWD, and water quality among others
