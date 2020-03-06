@@ -1,0 +1,199 @@
+# wallace output, reformatted
+# 06 March 2020
+# preparing for PHVA
+
+####load the required libraries####
+#comment out as necessary (i assume that each library is already installed -so i omit the install function)
+#library(spocc)
+#library(spThin)
+#library(dismo)
+#library(rgeos)
+#library(ENMeval)
+#library(dplyr)
+
+####tab1####
+#next line specifies the source for wallace
+source(system.file('shiny/funcs', 'functions.R', package = 'wallace'))
+
+# read in the csv with the occurence data (header = TRUE means that the csv file has column headings, instead of just data)
+userOccs <- read.csv("/cloud/project/finalWC.csv", header = TRUE)
+
+# checks if there are observations which share longitude and latitude, these would be treated as duplicate and hence removed
+occs <- duplicated(userOccs[c('longitude', 'latitude')])
+
+
+# the apostrophe (!) means NOT, so what this is saying is "create a NEW dataset called 'occs' which is made up of userOccs WITHOUT occs" 
+# in relation to the above line 24, note that userOccs was created in line 19 -and occs was created in line 22.
+occs <- userOccs[!occs,]
+# ^^note that the occs created in line 27 just replaces the one that was created in line 22.
+
+# remove any rows in occs where longitute or latitude is NA (or incomplete)
+occs <- occs[complete.cases(occs$longitude, occs$latitude), ]
+
+# create a new column in occs called, and the values of this row should just be the name (number) of the row
+occs$occID <- row.names(occs)
+
+# for lines 21, 26, and 30, you can just run the name of the dataset and it will display it -just so that you can know what you are working with.
+
+
+####tab2####
+# create a polygon to select occurrences 
+# set points for the polygon on 4 points (last and first are the same), the x and y coordinates are given as below.
+selCoords <- data.frame(x = c(23.9502, 23.9173, 22.2204, 22.1765, 23.9502), y = c(-18.8907, -19.8701, -19.8856, -18.8179, -18.8907))
+
+# convert the points in line 42 to a polygon
+selPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(selCoords)), ID=1)))
+
+# select only occurences that overlap with polygon, based on coordinates
+occsXY <- occs[c('longitude', 'latitude')]
+sp::coordinates(occsXY) <- ~ longitude + latitude
+intersect <- sp::over(occsXY, selPoly)
+intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
+occs <- occs[intersect.rowNums, ]
+
+####tab3####
+# obtain environmental data from WorldClim website
+# also, select dataset resolution, in this case i selected 0.5 arcmin (which is roughly 500m)
+# in this case, a raster of worldclim is used, but we also have the option to use our own data, e.g. LUC or SWD
+envs <- raster::getData(name = "worldclim", var = "bio", res = 0.5, lat = -20.848, lon = 23.439)
+
+# change names rasters variables
+envRes <- 0.5
+if (envRes == 0.5) {
+  i <- grep('_', names(envs))
+  editNames <- sapply(strsplit(names(envs)[i], '_'), function(x) x[1])
+  names(envs)[i] <- editNames
+}
+
+i <- grep('bio[0-9]$', names(envs))
+editNames <- paste('bio', sapply(strsplit(names(envs)[i], 'bio'), function(x) x[2]), sep='0')
+names(envs)[i] <- editNames
+
+# select variables for precipitation, temperature, and others that make sense
+envs <- envs[[c('bio01', 'bio08', 'bio3', 'bio4', 'bio5', 'bio6', 'bio7', 'bio8', 'bio9', 'bio10', 'bio11', 'bio12', 'bio13', 'bio14', 'bio15', 'bio16', 'bio17', 'bio18', 'bio19')]]
+
+# extract environmental values at occ grid cells
+locs.vals <- raster::extract(envs[[1]], occs[, c('longitude', 'latitude')])
+
+# remove occs without environmental values
+occs <- occs[!is.na(locs.vals), ]  
+
+### Process Environmental Data based on the selected variables, and polygon created in line 45
+# note that the minimum latitude is created dynamically (see line 83 to 86)
+xmin <- min(occs$longitude)     # in this case 22.3747
+xmax <- max(occs$longitude)     # in this case 23.80627
+ymin <- min(occs$latitude)      # in this case -19.81759
+ymax <- max(occs$latitude)      # in this case -18.9414
+
+# using the coordincates above, create a boundary box to select variables in
+bb <- matrix(c(xmin, xmin, xmax, xmax, xmin, ymin, ymax, ymax, ymin, ymin), ncol=2)
+
+# based on the above polygon (bb), craate an areas to select variables
+bgExt <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(bb)), 1)))
+
+# set buffer around bgExt (created in line 92) for worldclim data 
+bgExt <- rgeos::gBuffer(bgExt, width = 0.15)
+
+# crop the environmental rasters by the background extent shape
+envsBgCrop <- raster::crop(envs, bgExt)
+
+# mask the background extent shape from the cropped raster
+envsBgMsk <- raster::mask(envsBgCrop, bgExt)
+
+####new tab####
+# sample random background points, (this is training data)
+bgXY <- dismo::randomPoints(envsBgMsk, 10000)
+
+# convert matrix output to data frame
+bgXY <- as.data.frame(bgXY)  
+
+
+# partition using jacknife method (dont ask my why)
+occsXY <- occs[c('longitude', 'latitude')]
+group.data <- ENMeval::get.jackknife(occ=occsXY, bg.coords=bgXY)
+
+# pull out the occurrence and background partition group numbers from the list
+occs.grp <- group.data[[1]]
+bg.grp <- group.data[[2]]
+
+####yet another tab#### and now, modelling (selected maxent, instead of worldclim)
+# Build and Evaluate Niche Model
+
+# define the vector of regularization multipliers to test
+rms <- seq(1, 2, 6)
+
+# run Maxent ENMevaluate using the ENMevaluate function
+# the general format is: ENMevaluate(occurenceData, envData, backgroundCoordinates, occ.grp = NULL, etc) -in this case I used LQ (could be any of the 4 choices)
+# in this case, we will call the result 'e' so that we call call it later
+e <- ENMeval::ENMevaluate(occsXY, envsBgMsk, bg.coords = bgXY, RMvalues = rms, fc = 'LQ', 
+                          method = 'user', occs.grp, bg.grp, clamp = TRUE, algorithm = "maxnet")
+
+
+# save some of the results in their own data frames, the list of models, and the RasterStack of raw predictions
+evalTbl <- e@results
+evalMods <- e@models
+names(evalMods) <- e@results$settings
+evalPreds <- e@predictions
+
+# plot ENMeval (AUC -area under curve) results
+ENMeval::eval.plot(evalTbl, value = "avg.test.AUC")
+
+# Select your model from the models list
+mod <- evalMods[["LQ_1"]]
+
+# generate raw prediction
+pred <- evalPreds[["LQ_1"]]
+
+# get predicted values for occurrence grid cells
+occPredVals <- raster::extract(pred, occs.xy)
+
+# define minimum training presence threshold
+thr <- thresh(occPredVals, "mtp")
+# threshold model prediction
+pred <- pred > thr
+
+# plot the model prediction
+plot(pred)
+
+### Project Niche Model to new area
+projCoords <- data.frame(x = c(22.2095, 23.2145, 23.4671, 23.5824, 23.813, 24.0052, 24.0821, 24.1041, 24.0821, 23.7911, 23.4341, 23.209, 22.9234, 22.4292, 22.1327, 22.1546, 22.2095), y = c(-18.7763, -18.6827, -18.3232, -18.2502, -18.3389, -18.4952, -18.9479, -19.1763, -19.5443, -19.7977, -19.8907, -19.9837, -19.994, -19.8907, -19.5028, -18.9427, -18.7763))
+projPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(projCoords)), ID=1)))
+
+### Project Niche Model to New Extent
+# Now use crop and mask the predictor variables by projPoly
+# use the maxnet.predictRaster() function to predict the values for the new extent based on the model selected.
+
+predsProj <- raster::crop(envs, projPoly)
+predsProj <- raster::mask(predsProj, projPoly)
+proj <- ENMeval::maxnet.predictRaster(mod, predsProj, type = 'exponential', clamp = TRUE)
+
+# get predicted values for occurrence grid cells
+occPredVals <- raster::extract(pred, occs.xy)
+
+# define minimum training presence threshold
+thr <- thresh(occPredVals, "mtp")
+
+# threshold model prediction
+proj <- proj > thr
+
+# plot the model prediction
+plot(proj)
+
+### Calculate Environmental Similarity
+#To visualize the environmental difference between the occurrence
+#localities and your selected projection extent, calculate a
+#multidimensional environmental similarity surface (MESS). High negative
+#values mean great difference, whereas high positive values mean great
+#similarity. Interpreting the projected suitability for areas with high
+#negative values should be done with extreme caution, as they are outside
+#the environmental range of the occurrence localities.
+
+# extract environmental values from occurrence localities and background -- these were the values that went into the model
+names(bg.xy) <- names(occs.xy)
+all.xy <- rbind(occs.xy, bg.xy)
+occEnvVals <- raster::extract(envs, all.xy)
+
+# compare these values with the projection extent (envsMsk)
+proj.mess <- dismo::mess(predsProj, occEnvVals)
+plot(proj.mess)
+
