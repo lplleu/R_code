@@ -1,0 +1,49 @@
+require(rgdal)
+
+#enables charting application, using ggplot2 (install first, if not installed)
+#install.packages("ggplot2", dependencies = TRUE)
+library(ggplot2) 
+
+####load background map shapefile (because in this case you are interested in density per CHA, use the CHA shapefile) ####
+
+cha <- readOGR(dsn="/cloud/project/",layer="chaBW")
+
+
+cha_fortified <- fortify(cha)
+
+Nhabe <- ggplot(cha_fortified) +
+  theme_bw() +
+  geom_polygon(data = cha_fortified, 
+               aes(x = long, y = lat, group=group), 
+               colour='black', 
+               fill = 'white') +
+  #geom_text(aes(label = id, x = long, y = lat)) +
+  xlab("Longitude, E")+
+  ylab("Latitude, S")
+
+Nhabe+coord_map()
+
+####fix Projection (if you look at the map, it is currently distorted)####
+Nhabe_projected <- Nhabe +
+  coord_map()
+
+print(Nhabe_projected)
+
+#combine the CHA map (here called Nhabe_projected) with the Wattled Crane points to create a new object called 'map_data'
+Nhabe_projected$data$lat <- as.factor(ToothGrowth$dose)
+
+map_data <- 
+  Nhabe_projected +
+  geom_point(data=finalWC, 
+             aes(x=longitude, y=latitude), colour="red", 
+             fill="red",pch=21, size=0.5, alpha=I(0.9))+
+  coord_map(xlim = c(22.2, 23.85),ylim = c(-20.0, -18.75))  #this just crops the map to the given coordinates
+
+#display map (still struggling to label center og each CHA)
+print(map_data)
+
+####now, onto the real modelling####
+#install.packages("wallace" dependencies=TRUE)
+library(wallace)
+run_wallace()
+
