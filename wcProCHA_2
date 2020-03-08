@@ -147,8 +147,8 @@ mapCHA <- mapCHA +
 
 print(mapCHA)
 
-####wattledCrane####
-WC <- readOGR(dsn="/cloud/project/",layer="wattled_crane_2001")
+####population####
+WC <- readOGR(dsn="/cloud/project/",layer="population")
 #settlements_fortified <- fortify(settlements)
 WC_fortified <- data.frame(WC)
 
