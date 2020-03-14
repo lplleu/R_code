@@ -1,0 +1,56 @@
+# jedenfalls
+# 14-03-20
+# label center of geom_path
+
+####convert to polygon to enable labelling##
+
+polygon <- as(border, "SpatialLinesDataFrame")
+polygon <- as(polygon, "SpatialLinesDataFrame")
+writeOGR(polygon, dsn="/cloud/project/", layer="pathCHA", driver="ESRI Shapefile", overwrite_layer=TRUE)
+
+
+
+
+centroid <- aggregate(cbind(long,lat) ~ id, data=borderCHA_fortified, FUN=mean)
+testtext <- ggplot() +
+  geom_polygon(data = borderCHA_fortified, mapping = aes(x=long, y=lat, group = group, fill=id)) +
+  geom_text(data = centroid, mapping = aes(x=long, y=lat, label=id)) +
+  geom_path(color = "white") +
+  scale_fill_hue(l=40) +
+  coord_equal() +
+  theme(legend.position = "none", title = element_blank(), axis.text = element_blank())
+
+testtext
+#https://stackoverflow.com/questions/42225987/geom-text-finding-centroids-and-adding-text-in-a-polygon-using-ggplot2
+
+centroid$name <- c("NG/13","NG/14","NG/11","NG/10","NG/15","NG/7","NG/1","NG/10","NG/16","NG/12","NG/6","NG/20","NG/18","NG/2","NG/22","NG/24","NG/23","NG/28","U","NG/41","NG/42","NG/21","NG/3","NG/19","NG/25","NG/8","NG/26","NG/34","NG/43","NG/31","NG/27A","NG/33","NG/17","NG/38","NG/27B","NG/30","NG/52","NG/48","NG/29","NG/35","NG/4","U0","NG/45","NG/36","NG/9","NG/5","NG/45","NG/51","NG/37","NG/52","U1","NG/39","U2","NG/38x","U3","U4")
+centroid$name <- c("CH/3","NG/13","NG/12","NG/22","NG/5","NG/18","NG/2","NG/6","NG/24","NG/23","NG/28","D","NG/14","NG/41","NG/42","NG/21","NG/3","NG/19","NG/25","NG/8","NG/26","NG/0yyyyy","NG/43","NG/11","NG/31","NG/27A","NG/34","NG/17","NG/32","NG/27B","NG/30","NG/47","NG/48","NG/29","NG/10","NG/35","NG/4D","Dy","NG/45","NG/36","NG/9","NG/5","NG/49","NG/51","NG/37","NG/15","NG/49","Dw","NG/39","toDel_NG/4","NG/38","Dz","NG/7","NG/1","Dv","NG/16")
+
+centroid <- subset(centroid, name!="Dv")
+centroid <- subset(centroid, name!="Dz")
+centroid <- subset(centroid, name!="D")
+centroid <- subset(centroid, name!="Dy")
+centroid <- subset(centroid, name!="Dw")
+centroid <- subset(centroid, name!="toDel_NG/4")
+centroid <- subset(centroid, name!="NG/0yyyyy")
+
+#library("sf")
+
+#borderCHA <- readOGR(dsn="/cloud/project/",layer="pathCHA")
+#borderCHA
+
+#borderCHA_fortified <- fortify(borderCHA)
+#check
+polyNhabe <- ggplot(borderCHA_fortified) +
+  theme_bw() +
+  geom_polygon(data = borderCHA_fortified, aes(x = long, y = lat, group=group), colour='gray', fill=NA) +  
+  geom_text(data = centroid, mapping = aes(x=long, y=lat, label=name), size=4) 
+  #geom_text(data=borderCHA_fortified, aes(x = long, y = lat, label = order), size=3)  #add labels at centroids
+
+####addProjection####
+polyNhabe_projected <- polyNhabe +
+  coord_map()
+
+print(polyNhabe_projected)
+
+
