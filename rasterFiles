@@ -1,0 +1,20 @@
+# working with rasters
+# 22_March_20
+# jedenfalls
+
+#### oh, and one more thing, young man. #####
+
+older <- brick("/cloud/project/Land Cover 2000 Scheme I.tiff")
+older <- crop(older, extent(22.2, 24,-20,-18.25))
+plotRGB(older)
+
+newerA <- brick("/cloud/project/Land Cover 2010 Scheme II.tiff")
+newerA <- crop(newerA, extent(22.2, 24,-20,-18.25))
+plotRGB(newerA)
+
+newerB <- brick("/cloud/project/Land Cover 2010 Scheme I.tiff")
+newerB <- crop(newerB, extent(22.2, 24,-20,-18.25))
+plotRGB(newerB)
+
+# just to save the cropped raster so that you wouldnt have to deal with massive files. this one is less that 1Mb
+writeRaster(newerB, "croppedLU2010", format = "GTiff")
