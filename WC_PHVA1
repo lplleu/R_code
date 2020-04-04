@@ -1,0 +1,298 @@
+# jedenfalls
+# 02 April 2020
+# preparing for PHVA
+
+####setup#### 
+#load the required libraries
+#comment out as necessary (i assume that each library is already installed -so i omit the install function)
+#library(spocc)
+#library(spThin)
+#library(dismo)
+#library(rgeos)
+#library(ENMeval)
+#library(dplyr)
+
+source(system.file('shiny/funcs', 'functions.R', package = 'wallace'))
+
+####tab1 - Obtain Occurence Data####
+# read in the csv with the occurence data (header = TRUE means that the csv file has column headings, instead of just data)
+userOccs <- read.csv("/cloud/project/finalWC.csv", header = TRUE) #here gives 589 records
+
+# checks if there are observations which share longitude and latitude, these would be treated as duplicate and hence removed
+occs <- duplicated(userOccs[c('longitude', 'latitude')])
+
+
+# the apostrophe (!) means NOT, so what this is saying is "create a NEW dataset called 'occs' which is made up of userOccs WITHOUT occs" 
+# in relation to the above line 24, note that userOccs was created in line 19 -and occs was created in line 22.
+occs <- userOccs[!occs,] #here gives 851 records, therefore there must have been 8 duplicates
+# ^^note that the occs created in line 27 just replaces the one that was created in line 22.
+
+# remove any rows in occs where longitute or latitude is NA (or incomplete)
+occs <- occs[complete.cases(occs$longitude, occs$latitude), ]
+
+# create a new column in occs called, and the values of this row should just be the name (number) of the row
+occs$occID <- row.names(occs)
+
+# for lines 21, 26, and 30, you can just run the name of the dataset and it will display it -just so that you can know what you are working with.
+
+
+####tab2 - Process Occurence Data####
+# create a polygon to select occurrences 
+# set points for the polygon on 4 points (last and first are the same), the x and y coordinates are given as below.
+selCoords <- data.frame(x = c(23.9502, 23.9173, 22.2204, 22.1765, 23.9502), y = c(-18.8907, -19.8701, -19.8856, -18.8179, -18.8907))
+
+# convert the points in line 42 to a polygon
+selPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(selCoords)), ID=1)))
+
+# select only occurences that overlap with polygon, based on coordinates
+occsXY <- occs[c('longitude', 'latitude')]
+sp::coordinates(occsXY) <- ~ longitude + latitude
+intersect <- sp::over(occsXY, selPoly)
+intersect.rowNums <- as.numeric(which(!(is.na(intersect))))
+occs <- occs[intersect.rowNums, ]   #here gives 851 records
+
+####tab3 - Obtain Environmental Data####
+# also, select dataset resolution, in this case i selected 0.5 arcmin (which is roughly 500m)
+# in this case, use own data on LC
+
+# create paths to the raster files
+userRas.paths <- file.path('/cloud/project/', 'croppedLU2010.tif')
+# make a RasterStack out of the raster files
+envs <- raster::stack(userRas.paths)
+
+# change names rasters variables
+envRes <- 0.5
+
+# extract environmental values at occ grid cells
+locs.vals <- raster::extract(envs[[1]], occs[, c('longitude', 'latitude')])
+
+# remove occs without environmental values
+occs <- occs[!is.na(locs.vals), ]  
+
+####tab4 - Process Environmental Data####
+# based on the selected variables, and polygon created in line 45
+# note that the minimum latitude is created dynamically (see line 83 to 86)
+xmin <- min(occs$longitude)     # in this case 22.3747
+xmax <- max(occs$longitude)     # in this case 23.80627
+ymin <- min(occs$latitude)      # in this case -19.81759
+ymax <- max(occs$latitude)      # in this case -18.9414
+
+# using the coordincates above, create a boundary box to select variables in
+bb <- matrix(c(xmin, xmin, xmax, xmax, xmin, ymin, ymax, ymax, ymin, ymin), ncol=2)
+
+# based on the above polygon (bb), craate an areas to select variables
+bgExt <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(bb)), 1)))
+
+# set buffer around bgExt (created in line 92) for worldclim data 
+bgExt <- rgeos::gBuffer(bgExt, width = 0.15)
+
+# crop the environmental rasters by the background extent shape
+envsBgCrop <- raster::crop(envs, bgExt)
+
+# mask the background extent shape from the cropped raster
+envsBgMsk <- raster::mask(envsBgCrop, bgExt)
+
+####tab5 - Partition Occurence Data####
+# sample random background points, (this is training data)
+bgXY <- dismo::randomPoints(envsBgMsk, 10000)
+
+# convert matrix output to data frame
+bgXY <- as.data.frame(bgXY)  
+
+
+# partition using jacknife method (dont ask me why)
+occsXY <- occs[c('longitude', 'latitude')]
+group.data <- ENMeval::get.jackknife(occ=occsXY, bg.coords=bgXY)
+
+# pull out the occurrence and background partition group numbers from the list
+occs.grp <- group.data[[1]]
+bg.grp <- group.data[[2]]
+
+####yet another tab#### and now, modelling (selected maxent, instead of worldclim)
+# Build and Evaluate Niche Model
+
+# define the vector of regularization multipliers to test
+rms <- seq(1, 2, 6)
+
+####tab6 - Build and Evaluate Niche Model####
+# run Maxent ENMevaluate using the ENMevaluate function
+# the general format is: ENMevaluate(occurenceData, envData, backgroundCoordinates, occ.grp = NULL, etc) -in this case I used LQ (could be any of the 4 choices)
+# in this case, we will call the result 'e' so that we call call it later
+
+#* THIS LINE TAKES VERY LONG TO RUN, MINE TOOK 4min THE FIRST TIME, THEN WHEN I TRIED AGAIN IT TOOK 35min -SO BE PATIENT  *#
+e <- ENMeval::ENMevaluate(occsXY, envsBgMsk, bg.coords = bgXY, RMvalues = rms, fc = 'LQ', 
+                          method = 'user', occs.grp, bg.grp, clamp = TRUE, algorithm = "maxnet")
+
+
+# save some of the results in their own data frames, the list of models, and the RasterStack of raw predictions
+evalTbl <- e@results
+evalMods <- e@models
+names(evalMods) <- e@results$settings
+evalPreds <- e@predictions
+
+####tab7 - Visualise Model Results#####
+# plot ENMeval (AUC -area under curve) results
+ENMeval::eval.plot(evalTbl, value = "avg.test.AUC") #Area-Under-Curve plot (model evaluation table)
+
+# Select your model from the models list
+mod <- evalMods[["LQ_1"]]
+
+# generate raw prediction
+pred <- evalPreds[["LQ_1"]]
+
+# get predicted values for occurrence grid cells
+occPredVals <- raster::extract(pred, occsXY)
+
+# define minimum training presence threshold
+thr <- thresh(occPredVals, "mtp")
+
+# threshold model prediction
+pred <- pred > thr
+
+# plot the model prediction
+plot(pred) #first plot
+
+### Project Niche Model to new area
+# i included Linyanti in this area, just to see whether it can project to that as well
+projCoords <- data.frame(x = c(22.2095, 23.2145, 23.4671, 23.5824, 23.813, 24.0052, 24.0821, 24.1041, 24.0821, 23.7911, 23.4341, 23.209, 22.9234, 22.4292, 22.1327, 22.1546, 22.2095), y = c(-18.7763, -18.6827, -18.3232, -18.2502, -18.3389, -18.4952, -18.9479, -19.1763, -19.5443, -19.7977, -19.8907, -19.9837, -19.994, -19.8907, -19.5028, -18.9427, -18.7763))
+projPoly <- sp::SpatialPolygons(list(sp::Polygons(list(sp::Polygon(projCoords)), ID=1)))
+
+####tab8 - Project Niche Model####
+# project to New Extent (instead of new time)
+# Now use crop and mask the predictor variables by projPoly
+# use the maxnet.predictRaster() function to predict the values for the new extent based on the model selected.
+
+predsProj <- raster::crop(envs, projPoly)
+predsProj <- raster::mask(predsProj, projPoly)
+proj <- ENMeval::maxnet.predictRaster(mod, predsProj, type = 'exponential', clamp = TRUE)
+
+# get predicted values for occurrence grid cells
+occPredVals <- raster::extract(pred, occsXY)
+
+# define minimum training presence threshold
+thr <- thresh(occPredVals, "mtp")
+
+# threshold model prediction
+proj <- proj > thr
+
+# plot the model prediction
+plot(proj) #this is the one with the larger differences
+
+### Calculate Environmental Similarity
+#To visualize the environmental difference between the occurrence
+#localities and your selected projection extent, calculate a
+#multidimensional environmental similarity surface (MESS). High negative
+#values mean great difference, whereas high positive values mean great
+#similarity. Interpreting the projected suitability for areas with high
+#negative values should be done with extreme caution, as they are outside
+#the environmental range of the occurrence localities.
+
+# extract environmental values from occurrence localities and background -- these were the values that went into the model
+names(bgXY) <- names(occsXY)
+all.xy <- rbind(occsXY, bgXY)
+occEnvVals <- raster::extract(envs, all.xy)
+
+# compare these values with the projection extent (envsMsk)
+proj.mess <- dismo::mess(predsProj, occEnvVals)
+plot(proj.mess) #this one just shows lower probability in Linyanti and a 1 in the entire Okavango.
+
+# [maybe overlay with other landmarks/polygons to visualise it better].
+
+#here goes, 11-March-2020
+
+#require(rgdal)  #enables reading of shapefiles (for CHA)
+#library(ggplot2) #enables us to make a chart
+#library(raster) (enables us to overlay projection onto CHA shapefile)
+
+####tab9 - added CHA boundaries####
+CHAs <- readOGR(dsn="/cloud/project/",layer="cha") ##requires rgdal
+CHAs_fortified <- fortify(CHAs) #requires library(ggplot2)
+
+map.p <- rasterToPoints(proj.mess)
+#map.p <- rasterToPoints(proj) #if you want to see where the other one is plotting
+#map.p <- rasterToPoints(pred) #for the first one
+
+df <- data.frame(map.p)
+
+# to aggregate paths belonging to same polygon (using the field 'id')
+centroid <- aggregate(cbind(long,lat) ~ id, data=CHAs_fortified, FUN=mean)
+
+# because the CHA names have somehow disappeared, add them manually -took me 2 hours to do this
+centroid$name <- c("CH/3","NG/13","NG/12","NG/22","NG/5","NG/18","NG/2","NG/6","NG/24","NG/23","NG/28","D","NG/14","NG/41","NG/42","NG/21","NG/3","NG/19","NG/25","NG/8","NG/26","NG/0yyyyy","NG/43","NG/11","NG/31","NG/27A","NG/34","NG/17","NG/32","NG/27B","NG/30","NG/47","NG/48","NG/29","NG/10","NG/35","NG/4D","Dy","NG/45","NG/36","NG/9","NG/5","NG/49","NG/51","NG/37","NG/15","NG/49","Dw","NG/39","toDel_NG/4","NG/38","Dz","NG/7","NG/1","Dv","NG/16")
+
+# don't know why there are some empty/lost polygons, just to delete them
+centroid <- subset(centroid, name!="Dv")
+centroid <- subset(centroid, name!="Dz")
+centroid <- subset(centroid, name!="D")
+centroid <- subset(centroid, name!="Dy")
+centroid <- subset(centroid, name!="Dw")
+centroid <- subset(centroid, name!="toDel_NG/4")
+centroid <- subset(centroid, name!="NG/0yyyyy")
+
+# that's it.
+
+ggplot(data=df, aes(y=y, x=x)) +
+  geom_raster(aes(fill=df$mess)) +
+  scale_fill_distiller(palette = "Spectral", direction = 1) +
+  geom_path(data = CHAs_fortified, aes(x = long, y = lat, group = group),color = '#000000', size = .5) +
+  geom_text(data = centroid, mapping = aes(x=long, y=lat, label=name), size=4) +
+  xlim(22.2, 24) +
+  ylim( -20,-18.25)  +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14,face="bold"),
+        panel.grid.minor = element_line(colour = "gray"),
+        panel.grid.major = element_line(colour = "gray")) +
+  labs(x="Longitude, E", y="Latitude, N", fill = "Probability")  +
+  coord_equal()
+
+
+
+
+
+#### oh, and one more thing, young man. #####
+
+older <- brick("/cloud/project/Land Cover 2000 Scheme I.tiff")
+older <- crop(older, extent(22.2, 24,-20,-18.25))
+plotRGB(older)
+
+newerA <- brick("/cloud/project/Land Cover 2010 Scheme II.tiff")
+newerA <- crop(newerA, extent(22.2, 24,-20,-18.25))
+plotRGB(newerA)
+head(newerA)
+
+newerB <- brick("/cloud/project/Land Cover 2010 Scheme I.tiff")
+newerB <- crop(newerB, extent(22.2, 24,-20,-18.25))
+plotRGB(newerB)
+
+# just to save the cropped raster so that you wouldnt have to deal with massive files. this one is less that 1Mb
+writeRaster(newerB, "croppedLU2010", format = "GTiff")
+
+# 
+
+#run_wallace()
+
+
+newerC <- brick("/cloud/project/AnnualFloodMaps_summed.tif")
+newerC <- crop(newerC, extent(22.2, 24,-20,-18.25))
+head(newerC)
+
+plotRGB(newerC)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
